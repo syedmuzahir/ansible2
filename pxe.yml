@@ -1,0 +1,101 @@
+---
+- name: installing and configuring pxe
+  hosts: 192.168.0.191
+  vars:
+    - rpm1: vsftpd
+    - rpm2: tftp-server
+    - rpm3: dhcp
+    - rpm4: syslinux
+    - svc1: vsftpd
+    - svc2: xinetd
+    - svc3: dhcpd
+  tasks: 
+  - name: INSTALLAING PACKAGES
+    yum:
+      name:
+        - "{{ rpm1 }}"
+        - "{{ rpm2 }}"
+        - "{{ rpm3 }}"
+        - "{{ rpm4 }}"
+      state: present
+  - name: COPYING DVD TO VSFTPD /var/ftp/pub DIRECTORY
+    copy:
+      src: /media/
+      remote_src: yes
+      dest: /var/ftp/pub
+
+  - name: ENSURING VSFTPD IS RUNNING/ENANBLED
+    service:
+      name: "{{ svc1 }}"
+      state: started
+      enabled: yes
+  - name: SETTING UP TFTP SERVER
+    copy:
+      src: /var/ftp/pub/CentOS_6.10_Final/isolinux/
+      remote_src: yes
+      dest: /var/lib/tftpboot
+  - name: CREATING pxelinux.cfg DIRECTORY in /var/lib/tftpboot
+    file:
+      path: /var/lib/tftpboot/pxelinux.cfg
+      state: directory
+  - name: RENAME isolinux.cfg in pxelinux.cfg with name default
+    copy:
+      src: /var/lib/tftpboot/isolinux.cfg
+      remote_src: yes
+      dest: /var/lib/tftpboot/pxelinux.cfg/default
+  - name: Coppying pxelinux.0 to /var/lib/tftpboot
+    copy:
+      src: /usr/share/syslinux/pxelinux.0
+      remote_src: yes
+      dest: /var/lib/tftpboot
+  - name: ENABLING XINETD FROM CONFIG FILE
+    replace:
+      path: /etc/xinetd.d/tftp
+      regexp: "yes"
+      replace: "no"
+  - name: STARTING/ENABLING XINETD
+    service:
+      name: xinetd
+      state: started
+      enabled: yes
+  - name: CONFIGURING DHCPD
+    blockinfile:
+      path: /etc/dhcp/dhcpd.conf
+      block: |
+         default-lease-time 600;
+         max-lease-time 7200;
+         authoritative;
+         allow booting;
+         allow bootp;
+
+         subnet 192.168.0.0 netmask 255.255.255.0 {
+           range 192.168.0.2 192.168.0.254;
+           next-server 192.168.0.191;
+           filename "pxelinux.0";
+         }
+      backup: yes
+  - name: STARTING/ENABLING DHCPD
+    service:
+      name: "{{ svc3 }}"
+      state: started
+      enabled: yes
+
+  - name: STOPPING IPTALBES and
+    service:
+      name: iptables
+      state: stopped
+
+  - name: SELINUX DISABLING
+    shell: "setenforce 0"
+  - name: RESTARTING ALL The SERVICES
+    service:
+      name: "{{ svc1 }}"
+      state: restarted
+  - name: RESTING service 2
+    service:
+      name: "{{ svc2 }}"
+      state: restarted
+  - name: RESTING Service 3
+    service:
+      name: "{{ svc3 }}"
+      state: restarted
